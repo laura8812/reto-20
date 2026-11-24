@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
@@ -172,42 +171,102 @@ def index():
     return """<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Agente comunitario analítico</title>
   <style>
     body{font-family:system-ui;max-width:860px;margin:40px auto;padding:0 20px;background:#f6f7fb;color:#172033}
     h1{margin-bottom:8px}.card{background:white;border-radius:12px;padding:20px;margin:18px 0;box-shadow:0 3px 14px #cbd2e1}
-    textarea,input,button{font:inherit}textarea{width:100%;min-height:90px;padding:10px;box-sizing:border-box}
+    textarea,input,button{font:inherit}
+    textarea{width:100%;min-height:90px;padding:10px;box-sizing:border-box}
     button{padding:10px 16px;border:0;border-radius:8px;background:#4255bd;color:white;cursor:pointer}
+    button:disabled{cursor:wait;opacity:.7}
     pre{white-space:pre-wrap}small{color:#68738a}
   </style>
 </head>
 <body>
-  <h1>Agente comunitario analítico</h1><small>Consulta fundamentada sobre documentos comunitarios</small>
+  <h1>Agente comunitario analítico</h1>
+  <small>Consulta fundamentada sobre documentos comunitarios</small>
+
   <div class="card">
     <h2>Cargar documento</h2>
     <input id="file" type="file" accept=".txt,.md">
-    <button onclick="upload()">Cargar</button><p id="uploadStatus"></p>
+    <button type="button" id="uploadButton">Cargar</button>
+    <p id="uploadStatus"></p>
   </div>
+
   <div class="card">
     <h2>Realizar consulta</h2>
     <textarea id="question" placeholder="Ejemplo: ¿Cómo solicitar apoyo comunitario?"></textarea><br><br>
-    <button onclick="ask()">Consultar</button>
+    <button type="button" id="askButton">Consultar</button>
     <pre id="answer"></pre>
   </div>
+
 <script>
-async function upload(){
-  const file=document.querySelector('#file').files[0]; if(!file)return;
-  const form=new FormData(); form.append('file',file);
-  const r=await fetch('/documents',{method:'POST',body:form});
-  document.querySelector('#uploadStatus').textContent=(await r.json()).name||'Error';
+async function uploadDocument() {
+  const file = document.getElementById('file').files[0];
+  const status = document.getElementById('uploadStatus');
+
+  if (!file) {
+    status.textContent = 'Selecciona primero un archivo .txt o .md.';
+    return;
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const response = await fetch('/documents', { method: 'POST', body: form });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Error al cargar el documento');
+    }
+
+    status.textContent = 'Documento cargado: ' + data.name;
+  } catch (error) {
+    status.textContent = 'Error: ' + error.message;
+  }
 }
-async function ask(){
-  const question=document.querySelector('#question').value;
-  const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
-  const data=await r.json();
-  document.querySelector('#answer').textContent=data.answer+'\n\nFuentes: '+JSON.stringify(data.sources,null,2);
+
+async function askQuestion() {
+  const question = document.getElementById('question').value.trim();
+  const answerElement = document.getElementById('answer');
+  const button = document.getElementById('askButton');
+
+  if (question.length < 3) {
+    answerElement.textContent = 'Escribe una pregunta de al menos tres caracteres.';
+    return;
+  }
+
+  button.disabled = true;
+  answerElement.textContent = 'Consultando...';
+
+  try {
+    const response = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: question })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Error al realizar la consulta');
+    }
+
+    answerElement.textContent = data.answer
+      + '\n\nFuentes: '
+      + JSON.stringify(data.sources, null, 2);
+  } catch (error) {
+    answerElement.textContent = 'Error: ' + error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
+
+document.getElementById('uploadButton').addEventListener('click', uploadDocument);
+document.getElementById('askButton').addEventListener('click', askQuestion);
 </script>
 </body>
 </html>"""
